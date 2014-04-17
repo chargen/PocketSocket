@@ -135,16 +135,24 @@ typedef NS_ENUM(NSInteger, PSWebSocketReadyState) {
  */
 - (void)closeWithCode:(NSInteger)code reason:(NSString *)reason;
 
-#pragma mark - Cheking state
+#pragma mark - Stream Properties
 
 /**
- *  Get the negotiated cipher suite for ongoing connection
+ *  Copy a property from the streams this websocket is backed by
  *
- *  @warning Returns correct value only when 'readyState' is PSWebSocketReadyStateOpen. Otherwise returns SSL_NULL_WITH_NULL_NULL. Can return SSL_NULL_WITH_NULL_NULL if connection is not secure.
+ *  @param key property key - see kCFStreamProperty constants
  *
- *  @return SSLCipherSuite of current opened connection.
+ *  @return property value
  */
-- (SSLCipherSuite)negotiatedCipherSuite;
+- (CFTypeRef)copyStreamPropertyForKey:(NSString *)key;
 
+/**
+ *  Set a property on the streams this websocket is backed by. Calling this
+ *  method once the websocket has been opened will raise an exception.
+ *
+ *  @param property property value
+ *  @param key      property key - see kCFStreamProperty constants
+ */
+- (void)setStreamProperty:(CFTypeRef)property forKey:(NSString *)key;
 
 @end
