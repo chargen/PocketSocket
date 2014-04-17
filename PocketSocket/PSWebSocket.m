@@ -443,8 +443,8 @@
 		
 		if (_secure) {
 			[self setupSecurity];
-			[_driver start];
 		}
+		[_driver start];
 		
 		return preBoundaryLength;
 	} else {
