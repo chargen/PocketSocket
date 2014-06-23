@@ -203,17 +203,9 @@ typedef NS_ENUM(NSInteger, PSWebSocketDriverState) {
     // set handshake sec key
     NSMutableData *secKeyData = [NSMutableData dataWithLength:16];
     SecRandomCopyBytes(kSecRandomDefault, secKeyData.length, secKeyData.mutableBytes);
-	
-#if __MAC_OS_X_VERSION_MIN_REQUIRED < __MAC_10_9 || __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_7_0
-    if(![secKeyData respondsToSelector:@selector(base64EncodedStringWithOptions:)]) {
-        _handshakeSecKey = [secKeyData base64Encoding];
-    } else {
-        _handshakeSecKey = [secKeyData base64EncodedStringWithOptions:0];
-    }
-#else
-    _handshakeSecKey = [secKeyData base64EncodedStringWithOptions:0];
-#endif
-	
+    
+    _handshakeSecKey = [self base64EncodedData:secKeyData];
+    
     NSURL *URL = _request.URL;
     BOOL secure = ([URL.scheme isEqualToString:@"https"] || [URL.scheme isEqualToString:@"wss"]);
     NSString *host = (URL.port) ? [NSString stringWithFormat:@"%@:%@", URL.host, URL.port] : URL.host;
@@ -903,9 +895,22 @@ typedef NS_ENUM(NSInteger, PSWebSocketDriverState) {
     unsigned char sha1[CC_SHA1_DIGEST_LENGTH];
     CC_SHA1(data.bytes, (CC_LONG)data.length, sha1);
     data = [NSData dataWithBytes:sha1 length:CC_SHA1_DIGEST_LENGTH];
-    if(![data respondsToSelector:@selector(base64EncodedStringWithOptions:)]) {
-        return [data base64Encoding];
-    }
+
+    return [self base64EncodedData:data];
+}
+- (NSString *)base64EncodedData:(NSData *)data {
+	// if we're targeting deployment before OS X 10.9 or IOS 7 the public methods for base 64 encoding didn't exist
+	// however, a more basic private API ( which is now also public but deprecated ) did exist so we'll use it instead
+	
+#if (TARGET_OS_MAC && __MAC_OS_X_VERSION_MIN_REQUIRED < __MAC_10_9) || (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_7_0)
+	if(![data respondsToSelector:@selector(base64EncodedStringWithOptions:)]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+		return [data base64Encoding];
+#pragma clang diagnostic pop
+			
+	}
+#endif
     return [data base64EncodedStringWithOptions:0];
 }
 
