@@ -29,6 +29,7 @@
     NSOutputStream *_outputStream;
     PSWebSocketReadyState _readyState;
     BOOL _secure;
+	BOOL _securityChecked;
     BOOL _opened;
     BOOL _closeWhenFinishedOutput;
     BOOL _sentClose;
@@ -350,15 +351,16 @@
 		
 		NSString *host = [_request.URL host];
 		[SSLOptions setValue:host forKey:(__bridge id)kCFStreamSSLPeerName];
-#if DEBUG
-		[SSLOptions setValue:[NSNumber numberWithBool:NO] forKey:(__bridge id)kCFStreamSSLValidatesCertificateChain];
-		[SSLOptions setValue:[NSNumber numberWithBool:YES] forKey:(__bridge id)kCFStreamSSLAllowsAnyRoot];
-		[SSLOptions setValue:[NSNumber numberWithBool:YES] forKey:(__bridge id)kCFStreamSSLAllowsExpiredCertificates];
-		[SSLOptions setValue:[NSNumber numberWithBool:YES] forKey:(__bridge id)kCFStreamSSLAllowsExpiredRoots];
-		[SSLOptions setValue:(__bridge id)kCFNull forKey:(__bridge id)kCFStreamSSLPeerName];
-		NSLog(@"PSWebSocket: debug mode allowing all SSL certificates");
-#endif
+//#if DEBUG
+//		[SSLOptions setValue:[NSNumber numberWithBool:NO] forKey:(__bridge id)kCFStreamSSLValidatesCertificateChain];
+//		[SSLOptions setValue:[NSNumber numberWithBool:YES] forKey:(__bridge id)kCFStreamSSLAllowsAnyRoot];
+//		[SSLOptions setValue:[NSNumber numberWithBool:YES] forKey:(__bridge id)kCFStreamSSLAllowsExpiredCertificates];
+//		[SSLOptions setValue:[NSNumber numberWithBool:YES] forKey:(__bridge id)kCFStreamSSLAllowsExpiredRoots];
+//		[SSLOptions setValue:(__bridge id)kCFNull forKey:(__bridge id)kCFStreamSSLPeerName];
+//		NSLog(@"PSWebSocket: debug mode allowing all SSL certificates");
+//#endif
 		[SSLOptions setValue:(__bridge id)kCFStreamSocketSecurityLevelNegotiatedSSL forKey:(__bridge id)kCFStreamSSLLevel];
+		[SSLOptions setValue:[NSNumber numberWithBool:YES] forKey:(__bridge id)kCFStreamSSLValidatesCertificateChain];
 		
 		[_outputStream setProperty:SSLOptions forKey:(__bridge id)kCFStreamPropertySSLSettings];
 	}
@@ -655,6 +657,36 @@
 - (void)stream:(NSStream *)stream handleEvent:(NSStreamEvent)event {
     // @TODO HANDLE PINNED SSL CERTIFICATES
     [self executeWork:^{
+		if (_secure && !_securityChecked && (event == NSStreamEventHasBytesAvailable || event == NSStreamEventHasSpaceAvailable)) {
+			
+			SecTrustRef serverTrust = (__bridge SecTrustRef)[stream propertyForKey:(__bridge id)kCFStreamPropertySSLPeerTrust];
+			
+			SecTrustResultType result = 0;
+			
+#if defined(NS_BLOCK_ASSERTIONS)
+			SecTrustEvaluate(serverTrust, &result);
+#else
+			OSStatus status = SecTrustEvaluate(serverTrust, &result);
+			NSCAssert(status == errSecSuccess, @"SecTrustEvaluate error: %ld", (long int)status);
+#endif
+			if (result == kSecTrustResultUnspecified || result == kSecTrustResultProceed) {
+				_securityChecked = YES;
+			} else if (result == kSecTrustResultRecoverableTrustFailure) {
+				__block BOOL shouldTrust = NO;
+				if (self.delegate && [self.delegate respondsToSelector:@selector(webSocket:shouldTrustServer:)]) {
+					[self executeDelegateAndWait:^{
+						shouldTrust = [self.delegate webSocket:self shouldTrustServer:serverTrust];
+					}];
+				}
+				
+				if (!shouldTrust) {
+					[self failWithError:[NSError errorWithDomain:PSWebSocketErrorDomain code:PSWebSocketErrorCodeConnectionFailed userInfo:@{NSLocalizedDescriptionKey: @"SSL server is not trusted"}]];
+				}
+				_securityChecked = YES;
+			}
+		}
+		
+
         switch(event) {
             case NSStreamEventOpenCompleted: {
                 if(_mode != PSWebSocketModeClient) {
