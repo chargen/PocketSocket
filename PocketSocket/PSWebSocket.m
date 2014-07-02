@@ -360,7 +360,7 @@
 //		NSLog(@"PSWebSocket: debug mode allowing all SSL certificates");
 //#endif
 		[SSLOptions setValue:(__bridge id)kCFStreamSocketSecurityLevelNegotiatedSSL forKey:(__bridge id)kCFStreamSSLLevel];
-		[SSLOptions setValue:[NSNumber numberWithBool:YES] forKey:(__bridge id)kCFStreamSSLValidatesCertificateChain];
+		[SSLOptions setValue:[NSNumber numberWithBool:NO] forKey:(__bridge id)kCFStreamSSLValidatesCertificateChain];
 		
 		[_outputStream setProperty:SSLOptions forKey:(__bridge id)kCFStreamPropertySSLSettings];
 	}
