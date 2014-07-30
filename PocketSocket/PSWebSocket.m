@@ -43,8 +43,11 @@
 	BOOL _connectedToProxy;
 	NSString *_httpProxyAddress;
 	NSString *_httpProxyPort;
-	NSDictionary *_securityOptions;
-	NSArray *_streamProperties;
+	
+	SSLCipherSuite *_enabledCiphers;
+	size_t _enabledCiphersCount;
+	SSLProtocol _sslProtocolVersionMin;
+	SSLProtocol _sslProtocolVersionMax;
 }
 @end
 @implementation PSWebSocket
@@ -108,22 +111,22 @@
 }
 
 + (instancetype)clientSocketWithRequest:(NSURLRequest *)request {
-    return [self clientSocketWithRequest:request withStreamSecurityOptions:nil withStreamProperties:nil];
+    return [[self alloc] initClientSocketWithRequest:request];
 }
-+ (instancetype)clientSocketWithRequest:(NSURLRequest *)request withStreamSecurityOptions:(NSDictionary *)securityOptions withStreamProperties:(NSArray *)streamProperties {
-    return [[self alloc] initClientSocketWithRequest:request withStreamSecurityOptions:securityOptions withStreamProperties:streamProperties];
-}
-- (instancetype)initClientSocketWithRequest:(NSURLRequest *)request withStreamSecurityOptions:(NSDictionary *)securityOptions withStreamProperties:(NSArray *)streamProperties {
+- (instancetype)initClientSocketWithRequest:(NSURLRequest *)request {
 	if((self = [self initWithMode:PSWebSocketModeClient request:request])) {
+		
+		_sslProtocolVersionMax = kSSLProtocolUnknown;
+		_sslProtocolVersionMin = kSSLProtocolUnknown;
+		_enabledCiphersCount = 0;
+		_enabledCiphers = NULL;
+		
         NSURL *URL = request.URL;
         NSString *host = URL.host;
         UInt32 port = (UInt32)request.URL.port.integerValue;
         if(port == 0) {
             port = (_secure) ? 443 : 80;
         }
-		
-		_streamProperties = [streamProperties copy];
-		_securityOptions = [securityOptions copy];
 		
 		NSDictionary *proxyDic = (__bridge_transfer NSDictionary *)CFNetworkCopySystemProxySettings();
 		
@@ -155,20 +158,6 @@
         
         _inputStream = CFBridgingRelease(readStream);
         _outputStream = CFBridgingRelease(writeStream);
-        
-		if (_streamProperties) {
-			for (NSArray *pair in _streamProperties) {
-				NSString *key = [pair objectAtIndex:0];
-				id value = [pair objectAtIndex:1];
-				[_outputStream setProperty:value forKey:key];
-			}
-		}
-		
-        if(_secure && !_hasProxy) {
-			[self setupSecurity];
-        } else {
-			//maybe setup security for other proxy types
-		}
 	}
 	return self;
 }
@@ -194,6 +183,12 @@
         }
         
         _opened = YES;
+		
+		if(_secure && !_hasProxy) {
+			[self setupSecurity];
+        } else {
+			//maybe setup security for other proxy types
+		}
         
         // connect
         [self connect];
@@ -275,6 +270,41 @@
     }];
 }
 
+#pragma mark - Advanced stream options
+
+- (void)setEnabledCiphers:(SSLCipherSuite *)ciphers count:(size_t)count {
+	[self executeWorkAndWait:^{
+		if(_opened || _readyState != PSWebSocketReadyStateConnecting) {
+			[NSException raise:@"Invalid State" format:@"You cannot set stream properties on a PSWebSocket once it is opened."];
+			return;
+		}
+		_enabledCiphers = ciphers;
+		_enabledCiphersCount = count;
+	}];
+}
+
+- (void)setSSLSetProtocolVersionMin:(SSLProtocol)minVersion {
+	[self executeWorkAndWait:^{
+		if(_opened || _readyState != PSWebSocketReadyStateConnecting) {
+			[NSException raise:@"Invalid State" format:@"You cannot set stream properties on a PSWebSocket once it is opened."];
+			return;
+		}
+		
+		_sslProtocolVersionMin = minVersion;
+	}];
+}
+
+- (void)setSSLSetProtocolVersionMax:(SSLProtocol)maxVersion {
+	[self executeWorkAndWait:^{
+		if(_opened || _readyState != PSWebSocketReadyStateConnecting) {
+			[NSException raise:@"Invalid State" format:@"You cannot set stream properties on a PSWebSocket once it is opened."];
+			return;
+		}
+		
+		_sslProtocolVersionMax = maxVersion;
+	}];
+}
+
 #pragma mark - Connection
 
 - (void)connect {
@@ -344,25 +374,63 @@
 	
 	// @TODO PINNED SSL
 	
-	if ([_securityOptions count] > 0) {
-		[_outputStream setProperty:_securityOptions forKey:(__bridge id)kCFStreamPropertySSLSettings];
-	} else {
+	NSDictionary *sslOptions = [_outputStream propertyForKey:(__bridge id)kCFStreamPropertySSLSettings];
+	if (!sslOptions) {
 		NSMutableDictionary *SSLOptions = [NSMutableDictionary dictionary];
 		
 		NSString *host = [_request.URL host];
 		[SSLOptions setValue:host forKey:(__bridge id)kCFStreamSSLPeerName];
 //#if DEBUG
-//		[SSLOptions setValue:[NSNumber numberWithBool:NO] forKey:(__bridge id)kCFStreamSSLValidatesCertificateChain];
-//		[SSLOptions setValue:[NSNumber numberWithBool:YES] forKey:(__bridge id)kCFStreamSSLAllowsAnyRoot];
-//		[SSLOptions setValue:[NSNumber numberWithBool:YES] forKey:(__bridge id)kCFStreamSSLAllowsExpiredCertificates];
-//		[SSLOptions setValue:[NSNumber numberWithBool:YES] forKey:(__bridge id)kCFStreamSSLAllowsExpiredRoots];
-//		[SSLOptions setValue:(__bridge id)kCFNull forKey:(__bridge id)kCFStreamSSLPeerName];
-//		NSLog(@"PSWebSocket: debug mode allowing all SSL certificates");
+//		//[SSLOptions setValue:[NSNumber numberWithBool:NO] forKey:(__bridge id)kCFStreamSSLValidatesCertificateChain];
+//		//[SSLOptions setValue:[NSNumber numberWithBool:YES] forKey:(__bridge id)kCFStreamSSLAllowsAnyRoot];
+//		//[SSLOptions setValue:[NSNumber numberWithBool:YES] forKey:(__bridge id)kCFStreamSSLAllowsExpiredCertificates];
+//		//[SSLOptions setValue:[NSNumber numberWithBool:YES] forKey:(__bridge id)kCFStreamSSLAllowsExpiredRoots];
+//		//[SSLOptions setValue:(__bridge id)kCFNull forKey:(__bridge id)kCFStreamSSLPeerName];
+//		//NSLog(@"PSWebSocket: debug mode allowing all SSL certificates");
 //#endif
 		[SSLOptions setValue:(__bridge id)kCFStreamSocketSecurityLevelNegotiatedSSL forKey:(__bridge id)kCFStreamSSLLevel];
 		[SSLOptions setValue:[NSNumber numberWithBool:NO] forKey:(__bridge id)kCFStreamSSLValidatesCertificateChain];
 		
 		[_outputStream setProperty:SSLOptions forKey:(__bridge id)kCFStreamPropertySSLSettings];
+	} else {
+		
+		// Override users stream validates certificate chain option as we validate chain manually
+		NSNumber *validatesChain = [sslOptions objectForKey:(__bridge id)kCFStreamSSLValidatesCertificateChain];
+		if (!validatesChain || [validatesChain boolValue]) {
+			[sslOptions setValue:[NSNumber numberWithBool:NO] forKey:(__bridge id)kCFStreamSSLValidatesCertificateChain];
+			[_outputStream setProperty:sslOptions forKey:(__bridge id)kCFStreamPropertySSLSettings];
+		}
+	}
+
+	// These options should be set only after setting ssl options for stream.
+	// Only after setting ssl options stream has SSLContext.
+	// These options should be set before stream is actually opened.
+	
+	// Small hack to get SSL context of NSStream from http://lists.apple.com/archives/Apple-cdsa/2008/Oct/msg00007.html
+	const extern CFStringRef kCFStreamPropertySocketSSLContext;
+	CFDataRef data = (__bridge_retained CFDataRef)[_outputStream propertyForKey:(__bridge id)kCFStreamPropertySocketSSLContext];
+	
+	if (data) {
+		// Extract the SSLContextRef from the CFData
+		SSLContextRef sslContext;
+		CFDataGetBytes(data, CFRangeMake(0, sizeof(SSLContextRef)), (UInt8 *)&sslContext);
+		
+		if (_sslProtocolVersionMin != kSSLProtocolUnknown) {
+			SSLSetProtocolVersionMin(sslContext, _sslProtocolVersionMin);
+		}
+		
+		if (_sslProtocolVersionMax != kSSLProtocolUnknown) {
+			SSLSetProtocolVersionMax(sslContext, _sslProtocolVersionMax);
+		}
+		
+		if (_enabledCiphers && _enabledCiphersCount > 0) {
+			SSLCipherSuite *ciphers = (SSLCipherSuite *)malloc(_enabledCiphersCount * sizeof(SSLCipherSuite));
+			NSAssert(ciphers != NULL, @"Couldn't set proper SSL siphers!");
+			memmove(ciphers, _enabledCiphers, _enabledCiphersCount * sizeof(SSLCipherSuite));
+			SSLSetEnabledCiphers(sslContext, ciphers, _enabledCiphersCount);
+		}
+	
+		CFRelease(data);
 	}
 }
 
@@ -782,6 +850,9 @@
 - (void)dealloc {
     dispatch_barrier_sync(_workQueue, ^{
         [self disconnect];
+		if (_enabledCiphers) {
+			free(_enabledCiphers);
+		}
     });
 }
 

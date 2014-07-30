@@ -66,19 +66,6 @@ typedef NS_ENUM(NSInteger, PSWebSocketReadyState) {
 
 /**
  *  Initialize a PSWebSocket instance in client mode.
- *
- *  @param request that is to be used to initiate the handshake
- *  @param securityOptions these are TLS security options for NSInputStream
- *  @param streamProperties these are properties for NSInputStream/NSOutputStream which can be passed with -(void)setProperty:forKey: method of stream. These options should be passed as array of arrays with 2 values @[key, value].
- *
- *  @return an initialized instance of PSWebSocket in client mode
- *
- *  @warning If you pass 'kCFStreamPropertySSLSettings' dictionary in this method it will be overriden by @securityOptions param or default security options
- */
-+ (instancetype)clientSocketWithRequest:(NSURLRequest *)request withStreamSecurityOptions:(NSDictionary *)securityOptions withStreamProperties:(NSArray *)streamProperties;
-
-/**
- *  Initialize a PSWebSocket instance in client mode.
  *  Calls internally clientSocketWithRequest:withStreamSecurityOptions:withStreamProperties:
  *
  *  @param request that is to be used to initiate the handshake
@@ -157,5 +144,52 @@ typedef NS_ENUM(NSInteger, PSWebSocketReadyState) {
  *  @param key      property key - see kCFStreamProperty constants
  */
 - (void)setStreamProperty:(CFTypeRef)property forKey:(NSString *)key;
+
+#pragma mark - Advanced stream options
+
+/**
+ *  Set enabled ciphers on the streams this websocket is backed by. Calling this
+ *  method once the websocket has been opened will raise an exception.
+ *
+ *  @param ciphers	allocated in heap array of ciphers, websocket take ownership of it
+ *  @param count    number of ciphers in array
+ *
+ *  @warning Settings set in this method will be applied only
+ *  when 'open' method will be called. This means it potentially can
+ *  override settings set by other methods.
+ */
+- (void)setEnabledCiphers:(SSLCipherSuite *)ciphers count:(size_t)count;
+
+/**
+ *  Set SSL protocol minimum version for streams this websocket is backed by. Calling this
+ *  method once the websocket has been opened will raise an exception.
+ *
+ *  @param minVersion	minimum version of SSLProtocol
+ *  
+ *  @warning Settings set in this method will be applied only 
+ *  when 'open' method will be called. This means it potentially can
+ *  override settings set by other methods. This is especially the case 
+ *  if you have set kCFStreamSSLLevel in ssl settings dictionary set by
+ *  - (void)setStreamProperty:(CFTypeRef)property forKey:(NSString *)key;
+ *  with key kCFStreamPropertySSLSettings
+ *
+ */
+- (void)setSSLSetProtocolVersionMin:(SSLProtocol)minVersion;
+
+/**
+ *  Set SSL protocol maximum version for streams this websocket is backed by. Calling this
+ *  method once the websocket has been opened will raise an exception.
+ *
+ *  @param maxVersion	maximum version of SSLProtocol
+ *
+ *  @warning Settings set in this method will be applied only
+ *  when 'open' method will be called. This means it potentially can
+ *  override settings set by other methods. This is especially the case
+ *  if you have set kCFStreamSSLLevel in ssl settings dictionary set by
+ *  - (void)setStreamProperty:(CFTypeRef)property forKey:(NSString *)key;
+ *  with key kCFStreamPropertySSLSettings
+ */
+- (void)setSSLSetProtocolVersionMax:(SSLProtocol)maxVersion;
+
 
 @end
