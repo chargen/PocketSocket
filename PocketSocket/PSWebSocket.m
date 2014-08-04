@@ -44,6 +44,8 @@
 	NSString *_httpProxyAddress;
 	NSString *_httpProxyPort;
 	
+	BOOL _strictUserCertificateChecking;
+	NSDictionary *_sslOptions;
 	SSLCipherSuite *_enabledCiphers;
 	size_t _enabledCiphersCount;
 	SSLProtocol _sslProtocolVersionMin;
@@ -272,6 +274,26 @@
 
 #pragma mark - Advanced stream options
 
+- (void)setShouldUseStrictUserCertificateChecking:(BOOL)strictUserCertificateChecking {
+	[self executeWorkAndWait:^{
+		if(_opened || _readyState != PSWebSocketReadyStateConnecting) {
+			[NSException raise:@"Invalid State" format:@"You cannot set stream properties on a PSWebSocket once it is opened."];
+			return;
+		}
+		_strictUserCertificateChecking = strictUserCertificateChecking;
+	}];
+}
+
+- (void)setSSLOptions:(NSDictionary *)sslOptions {
+	[self executeWorkAndWait:^{
+		if(_opened || _readyState != PSWebSocketReadyStateConnecting) {
+			[NSException raise:@"Invalid State" format:@"You cannot set stream properties on a PSWebSocket once it is opened."];
+			return;
+		}
+		_sslOptions = sslOptions;
+	}];
+}
+
 - (void)setEnabledCiphers:(SSLCipherSuite *)ciphers count:(size_t)count {
 	[self executeWorkAndWait:^{
 		if(_opened || _readyState != PSWebSocketReadyStateConnecting) {
@@ -374,8 +396,7 @@
 	
 	// @TODO PINNED SSL
 	
-	NSDictionary *sslOptions = [_outputStream propertyForKey:(__bridge id)kCFStreamPropertySSLSettings];
-	if (!sslOptions) {
+	if (!_sslOptions) {
 		NSMutableDictionary *SSLOptions = [NSMutableDictionary dictionary];
 		
 		NSString *host = [_request.URL host];
@@ -395,11 +416,13 @@
 	} else {
 		
 		// Override users stream validates certificate chain option as we validate chain manually
+		NSMutableDictionary *sslOptions = [NSMutableDictionary dictionaryWithDictionary:_sslOptions];
 		NSNumber *validatesChain = [sslOptions objectForKey:(__bridge id)kCFStreamSSLValidatesCertificateChain];
 		if (!validatesChain || [validatesChain boolValue]) {
 			[sslOptions setValue:[NSNumber numberWithBool:NO] forKey:(__bridge id)kCFStreamSSLValidatesCertificateChain];
-			[_outputStream setProperty:sslOptions forKey:(__bridge id)kCFStreamPropertySSLSettings];
 		}
+		
+		[_outputStream setProperty:sslOptions forKey:(__bridge id)kCFStreamPropertySSLSettings];
 	}
 
 	// These options should be set only after setting ssl options for stream.
@@ -727,30 +750,55 @@
     [self executeWork:^{
 		if (_secure && !_securityChecked && (event == NSStreamEventHasBytesAvailable || event == NSStreamEventHasSpaceAvailable)) {
 			
+			// @TODO This code does not handle HTTPS/SOCKS proxies!
+			
 			SecTrustRef serverTrust = (__bridge SecTrustRef)[stream propertyForKey:(__bridge id)kCFStreamPropertySSLPeerTrust];
 			
-			SecTrustResultType result = 0;
+			if (serverTrust) {
 			
-#if defined(NS_BLOCK_ASSERTIONS)
-			SecTrustEvaluate(serverTrust, &result);
-#else
-			OSStatus status = SecTrustEvaluate(serverTrust, &result);
-			NSCAssert(status == errSecSuccess, @"SecTrustEvaluate error: %ld", (long int)status);
-#endif
-			if (result == kSecTrustResultUnspecified || result == kSecTrustResultProceed) {
-				_securityChecked = YES;
-			} else if (result == kSecTrustResultRecoverableTrustFailure) {
-				__block BOOL shouldTrust = NO;
-				if (self.delegate && [self.delegate respondsToSelector:@selector(webSocket:shouldTrustServer:)]) {
-					[self executeDelegateAndWait:^{
-						shouldTrust = [self.delegate webSocket:self shouldTrustServer:serverTrust];
-					}];
-				}
+				if (_strictUserCertificateChecking) {
+					// In case of strict user certidicate checking don't try to evaluate certificate
+					// using system provided APIs and ask user straight away.
+	
+					__block BOOL shouldTrust = NO;
+					if (self.delegate && [self.delegate respondsToSelector:@selector(webSocket:shouldTrustServer:)]) {
+						[self executeDelegateAndWait:^{
+							shouldTrust = [self.delegate webSocket:self shouldTrustServer:serverTrust];
+						}];
+					}
+					
+					if (!shouldTrust) {
+						[self failWithError:[NSError errorWithDomain:PSWebSocketErrorDomain code:PSWebSocketErrorCodeConnectionFailed userInfo:@{NSLocalizedDescriptionKey: @"SSL server is not trusted"}]];
+					}
+					_securityChecked = YES;
+				} else {
+					SecTrustResultType result = 0;
 				
-				if (!shouldTrust) {
-					[self failWithError:[NSError errorWithDomain:PSWebSocketErrorDomain code:PSWebSocketErrorCodeConnectionFailed userInfo:@{NSLocalizedDescriptionKey: @"SSL server is not trusted"}]];
+					OSStatus status = SecTrustEvaluate(serverTrust, &result);
+					NSCAssert(status == errSecSuccess, @"SecTrustEvaluate error: %ld", (long int)status);
+					
+					if (result == kSecTrustResultUnspecified || result == kSecTrustResultProceed) {
+						_securityChecked = YES;
+					} else if (result == kSecTrustResultRecoverableTrustFailure) {
+						__block BOOL shouldTrust = NO;
+						if (self.delegate && [self.delegate respondsToSelector:@selector(webSocket:shouldTrustServer:)]) {
+							[self executeDelegateAndWait:^{
+								shouldTrust = [self.delegate webSocket:self shouldTrustServer:serverTrust];
+							}];
+						}
+						
+						if (!shouldTrust) {
+							[self failWithError:[NSError errorWithDomain:PSWebSocketErrorDomain code:PSWebSocketErrorCodeConnectionFailed userInfo:@{NSLocalizedDescriptionKey: @"SSL server is not trusted"}]];
+						}
+						_securityChecked = YES;
+					}
 				}
-				_securityChecked = YES;
+			} else if ((_secure && serverTrust == NULL && _hasProxy && _connectedToProxy) ||
+					   (_secure && serverTrust == NULL && !_hasProxy)) {
+				// secure connection with http proxy, proxy already connected and no ssl parameters OR
+				// secure connection without proxy and no ssl parameters
+				// we have to fail since this is fishy!
+				[self failWithError:[NSError errorWithDomain:PSWebSocketErrorDomain code:PSWebSocketErrorCodeConnectionFailed userInfo:@{NSLocalizedDescriptionKey: @"SSL server is not trusted"}]];
 			}
 		}
 		

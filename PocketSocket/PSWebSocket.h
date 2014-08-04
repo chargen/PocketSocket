@@ -148,6 +148,30 @@ typedef NS_ENUM(NSInteger, PSWebSocketReadyState) {
 #pragma mark - Advanced stream options
 
 /**
+ *  Set option to use user certificate checking. Calling this
+ *  method once the websocket has been opened will raise an exception.
+ *
+ *  @param userCertificateChecking	Use user certificate checking.
+ *
+ *  @warning Defaults to NO. If set to YES websocket delegate should implement 
+ *	(webSocket:shouldTrustServer:) method. If this method returns NO websocket
+ *	connection is closed with SSL error.
+ */
+- (void)setShouldUseStrictUserCertificateChecking:(BOOL)strictUserCertificateChecking;
+
+/**
+ *  Set ssl options dictionary on the streams this websocket is backed by. Calling this
+ *  method once the websocket has been opened will raise an exception.
+ *
+ *  @param sslOptions	NSDictionary of ssl options for the stream
+ *
+ *  @warning sslOptions should be set in this method and not by setStreamProperty:forKey:
+ *	since this method handles proxy case properly. 
+ *	If you set ssl options in setStreamProperty:forKey: proxy case will not be handled properly!
+ */
+- (void)setSSLOptions:(NSDictionary *)sslOptions;
+
+/**
  *  Set enabled ciphers on the streams this websocket is backed by. Calling this
  *  method once the websocket has been opened will raise an exception.
  *
