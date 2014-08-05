@@ -135,12 +135,12 @@
 		if (proxyDic) {
 			NSNumber *proxiesHTTPEnable = [proxyDic objectForKey:(__bridge NSString *)kCFNetworkProxiesHTTPEnable];
 			if ([proxiesHTTPEnable boolValue]) {
-				NSLog(@"Found http proxy");
+//				NSLog(@"Found http proxy");
 				_hasProxy = YES;
 				_httpProxyAddress = [proxyDic objectForKey:(__bridge NSString *)kCFNetworkProxiesHTTPProxy];
 				_httpProxyPort = [[proxyDic objectForKey:(__bridge NSString *)kCFNetworkProxiesHTTPPort] stringValue];
 			} else {
-				NSLog(@"No http proxy");
+//				NSLog(@"No http proxy");
 			}
 		}
         
@@ -541,7 +541,7 @@
 	CFRelease(msg);
 	
 	if (statusCode == 200) {
-		NSLog(@"proxy \n %@", headers);
+//		NSLog(@"proxy \n %@", headers);
 		
 		_connectedToProxy = YES;
 		
@@ -552,7 +552,7 @@
 		
 		return preBoundaryLength;
 	} else {
-        NSLog(@"Request failed with response code %ld", (long)statusCode);
+//        NSLog(@"Request failed with response code %ld", (long)statusCode);
 		error = [NSError errorWithDomain:PSWebSocketErrorDomain code:PSWebSocketErrorCodeHandshakeFailed userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Received bad response code from proxy %ld", (long)statusCode]}];
 		[self failWithError:error];
         return -1;
