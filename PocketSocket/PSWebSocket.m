@@ -539,7 +539,7 @@
 	
 	// get values
 	NSInteger statusCode = CFHTTPMessageGetResponseStatusCode(msg);
-	NSDictionary *headers = [CFBridgingRelease(CFHTTPMessageCopyAllHeaderFields(msg)) copy];
+//	NSDictionary *headers = [CFBridgingRelease(CFHTTPMessageCopyAllHeaderFields(msg)) copy];
 	CFRelease(msg);
 	
 	if (statusCode == 200) {
