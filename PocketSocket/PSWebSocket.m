@@ -425,36 +425,38 @@
 		[_outputStream setProperty:sslOptions forKey:(__bridge id)kCFStreamPropertySSLSettings];
 	}
 
-	// These options should be set only after setting ssl options for stream.
-	// Only after setting ssl options stream has SSLContext.
-	// These options should be set before stream is actually opened.
+	// Apple forbids usage of private API :(
 	
-	// Small hack to get SSL context of NSStream from http://lists.apple.com/archives/Apple-cdsa/2008/Oct/msg00007.html
-	const extern CFStringRef kCFStreamPropertySocketSSLContext;
-	CFDataRef data = (__bridge_retained CFDataRef)[_outputStream propertyForKey:(__bridge id)kCFStreamPropertySocketSSLContext];
-	
-	if (data) {
-		// Extract the SSLContextRef from the CFData
-		SSLContextRef sslContext;
-		CFDataGetBytes(data, CFRangeMake(0, sizeof(SSLContextRef)), (UInt8 *)&sslContext);
-		
-		if (_sslProtocolVersionMin != kSSLProtocolUnknown) {
-			SSLSetProtocolVersionMin(sslContext, _sslProtocolVersionMin);
-		}
-		
-		if (_sslProtocolVersionMax != kSSLProtocolUnknown) {
-			SSLSetProtocolVersionMax(sslContext, _sslProtocolVersionMax);
-		}
-		
-		if (_enabledCiphers && _enabledCiphersCount > 0) {
-			SSLCipherSuite *ciphers = (SSLCipherSuite *)malloc(_enabledCiphersCount * sizeof(SSLCipherSuite));
-			NSAssert(ciphers != NULL, @"Couldn't set proper SSL siphers!");
-			memmove(ciphers, _enabledCiphers, _enabledCiphersCount * sizeof(SSLCipherSuite));
-			SSLSetEnabledCiphers(sslContext, ciphers, _enabledCiphersCount);
-		}
-	
-		CFRelease(data);
-	}
+//	// These options should be set only after setting ssl options for stream.
+//	// Only after setting ssl options stream has SSLContext.
+//	// These options should be set before stream is actually opened.
+//	
+//	// Small hack to get SSL context of NSStream from http://lists.apple.com/archives/Apple-cdsa/2008/Oct/msg00007.html
+//	const extern CFStringRef kCFStreamPropertySocketSSLContext;
+//	CFDataRef data = (__bridge_retained CFDataRef)[_outputStream propertyForKey:(__bridge id)kCFStreamPropertySocketSSLContext];
+//	
+//	if (data) {
+//		// Extract the SSLContextRef from the CFData
+//		SSLContextRef sslContext;
+//		CFDataGetBytes(data, CFRangeMake(0, sizeof(SSLContextRef)), (UInt8 *)&sslContext);
+//		
+//		if (_sslProtocolVersionMin != kSSLProtocolUnknown) {
+//			SSLSetProtocolVersionMin(sslContext, _sslProtocolVersionMin);
+//		}
+//		
+//		if (_sslProtocolVersionMax != kSSLProtocolUnknown) {
+//			SSLSetProtocolVersionMax(sslContext, _sslProtocolVersionMax);
+//		}
+//		
+//		if (_enabledCiphers && _enabledCiphersCount > 0) {
+//			SSLCipherSuite *ciphers = (SSLCipherSuite *)malloc(_enabledCiphersCount * sizeof(SSLCipherSuite));
+//			NSAssert(ciphers != NULL, @"Couldn't set proper SSL siphers!");
+//			memmove(ciphers, _enabledCiphers, _enabledCiphersCount * sizeof(SSLCipherSuite));
+//			SSLSetEnabledCiphers(sslContext, ciphers, _enabledCiphersCount);
+//		}
+//	
+//		CFRelease(data);
+//	}
 }
 
 #pragma mark - Proxy
