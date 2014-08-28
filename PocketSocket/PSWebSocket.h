@@ -15,6 +15,15 @@
 #import <Foundation/Foundation.h>
 #import "PSWebSocketTypes.h"
 
+typedef struct PSWebSocketByteCount
+{
+	uint64_t bytes;
+	uint64_t numberOf64BitOverflows; // ULONG_LONG_MAX
+}
+PSWebSocketByteCount; // total bytes are (numberOf64BitOverflows * ULONG_LONG_MAX + bytes)
+
+void PSWebSocketAddBytesToByteCount(uint64_t bytes, PSWebSocketByteCount *byteCount);
+
 typedef NS_ENUM(NSInteger, PSWebSocketReadyState) {
     PSWebSocketReadyStateConnecting = 0,
     PSWebSocketReadyStateOpen,
@@ -61,6 +70,8 @@ typedef NS_ENUM(NSInteger, PSWebSocketReadyState) {
 @property (nonatomic, assign, readonly) PSWebSocketReadyState readyState;
 @property (nonatomic, weak) id <PSWebSocketDelegate> delegate;
 @property (nonatomic, strong) dispatch_queue_t delegateQueue;
+@property (nonatomic, assign, readonly) PSWebSocketByteCount bytesSent;
+@property (nonatomic, assign, readonly) PSWebSocketByteCount bytesReceived;
 
 #pragma mark - Initialization
 

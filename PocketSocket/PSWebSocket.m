@@ -18,6 +18,19 @@
 #import "PSWebSocketDriver.h"
 #import "PSWebSocketBuffer.h"
 
+void PSWebSocketAddBytesToByteCount(uint64_t bytes, PSWebSocketByteCount *byteCount) {
+	uint64_t remaining = ULONG_LONG_MAX - byteCount->bytes;
+	
+	if (remaining < bytes) {
+		
+		uint64_t toAdd = bytes - remaining;
+		byteCount->bytes = toAdd;
+		byteCount->numberOf64BitOverflows += 1;
+	} else {
+		byteCount->bytes += bytes;
+	}
+};
+
 @interface PSWebSocket() <NSStreamDelegate, PSWebSocketDriverDelegate> {
     PSWebSocketMode _mode;
     NSMutableURLRequest *_request;
@@ -50,6 +63,12 @@
 	size_t _enabledCiphersCount;
 	SSLProtocol _sslProtocolVersionMin;
 	SSLProtocol _sslProtocolVersionMax;
+	
+	PSWebSocketByteCount _bytesSent;
+	PSWebSocketByteCount _bytesReceived;
+	
+	PSWebSocketByteCount _bytesSentSinceLastRead;
+	PSWebSocketByteCount _bytesReceivedSinceLastRead;
 }
 @end
 @implementation PSWebSocket
@@ -69,6 +88,8 @@
 #pragma mark - Properties
 
 @dynamic readyState;
+@dynamic bytesSent;
+@dynamic bytesReceived;
 
 - (PSWebSocketReadyState)readyState {
     __block PSWebSocketReadyState value = 0;
@@ -77,6 +98,27 @@
     }];
     return value;
 }
+
+
+- (PSWebSocketByteCount)bytesSent
+{
+	__block PSWebSocketByteCount value;
+	[self executeWorkAndWait:^{
+		value = _bytesSent;
+	}];
+	return value;
+}
+
+
+- (PSWebSocketByteCount)bytesReceived
+{
+	__block PSWebSocketByteCount value;
+	[self executeWorkAndWait:^{
+		value = _bytesReceived;
+	}];
+	return value;
+}
+
 
 #pragma mark - Initialization
 
@@ -579,6 +621,7 @@
         while(_inputStream.hasBytesAvailable) {
             NSInteger readLength = [_inputStream read:chunkBuffer maxLength:sizeof(chunkBuffer)];
             if(readLength > 0) {
+				PSWebSocketAddBytesToByteCount(readLength, &_bytesReceived);
                 if(!_inputBuffer.hasBytesAvailable) {
                     NSInteger consumedLength = -1;
 					if (_hasProxy && !_connectedToProxy) {
@@ -642,6 +685,8 @@
             return;
         }
         _outputBuffer.offset += writeLength;
+		
+		PSWebSocketAddBytesToByteCount(writeLength, &_bytesSent);
     }
     if(_closeWhenFinishedOutput &&
        !_outputBuffer.hasBytesAvailable &&
