@@ -66,9 +66,6 @@ void PSWebSocketAddBytesToByteCount(uint64_t bytes, PSWebSocketByteCount *byteCo
 	
 	PSWebSocketByteCount _bytesSent;
 	PSWebSocketByteCount _bytesReceived;
-	
-	PSWebSocketByteCount _bytesSentSinceLastRead;
-	PSWebSocketByteCount _bytesReceivedSinceLastRead;
 }
 @end
 @implementation PSWebSocket
@@ -366,6 +363,18 @@ void PSWebSocketAddBytesToByteCount(uint64_t bytes, PSWebSocketByteCount *byteCo
 		}
 		
 		_sslProtocolVersionMax = maxVersion;
+	}];
+}
+
+#pragma mark - Statistics
+
+- (void)resetByteCounts
+{
+	[self executeWorkAndWait:^{
+		_bytesReceived.bytes = 0;
+		_bytesReceived.numberOf64BitOverflows = 0;
+		_bytesSent.bytes = 0;
+		_bytesSent.numberOf64BitOverflows = 0;
 	}];
 }
 

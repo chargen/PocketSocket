@@ -226,5 +226,11 @@ typedef NS_ENUM(NSInteger, PSWebSocketReadyState) {
  */
 - (void)setSSLSetProtocolVersionMax:(SSLProtocol)maxVersion;
 
+#pragma mark - Statistics
+
+/**
+ *  Resets byte counts to zeros
+ */
+- (void)resetByteCounts;
 
 @end
